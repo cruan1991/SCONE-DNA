@@ -1,80 +1,80 @@
-# GitHub 推送指南
+# GitHub Push Guide
 
-## 仓库信息
+## Repository Information
 
-| 项目 | 值 |
-|------|-----|
-| **仓库地址** | https://github.com/cruan1991/SCONE-DNA |
-| **用户名** | cruan1991 |
-| **本地路径** | /Users/mac/Documents/SCONE-DNA |
-| **认证方式** | GitHub CLI (gh) ✅ 已配置 |
+| Item | Value |
+|------|-------|
+| **Repository URL** | https://github.com/cruan1991/SCONE-DNA |
+| **Username** | cruan1991 |
+| **Local Path** | /Users/mac/Documents/SCONE-DNA |
+| **Authentication** | GitHub CLI (gh) ✅ Configured |
 
 ---
 
-## 日常更新流程（一键推送）
+## Daily Update Workflow (One-Click Push)
 
 ```bash
 cd /Users/mac/Documents/SCONE-DNA
 git add .
-git commit -m "你的更新说明"
+git commit -m "Your update description"
 git push
 ```
 
-**不需要输入密码或 token！** GitHub CLI 已配置自动认证。
+**No password or token required!** GitHub CLI is configured for automatic authentication.
 
 ---
 
-## 详细步骤
+## Detailed Steps
 
-### 1. 进入项目目录
+### 1. Navigate to Project Directory
 ```bash
 cd /Users/mac/Documents/SCONE-DNA
 ```
 
-### 2. 查看修改状态
+### 2. Check Modification Status
 ```bash
 git status
 ```
 
-### 3. 添加修改的文件
+### 3. Add Modified Files
 ```bash
-# 添加所有修改
+# Add all modifications
 git add .
 
-# 或只添加特定文件
-git add 文件名.py
+# Or add specific files
+git add filename.py
 ```
 
-### 4. 提交修改
+### 4. Commit Changes
 ```bash
-git commit -m "简短描述你的修改"
+git commit -m "Brief description of your changes"
 ```
 
-### 5. 推送到 GitHub
+### 5. Push to GitHub
 ```bash
 git push
 ```
 
 ---
 
-## 常用命令速查
+## Command Quick Reference
 
-| 命令 | 说明 |
-|------|------|
-| `git status` | 查看当前状态 |
-| `git add .` | 添加所有修改 |
-| `git commit -m "msg"` | 提交修改 |
-| `git push` | 推送到远程 |
-| `git pull` | 拉取远程更新 |
-| `git log --oneline` | 查看提交历史 |
-| `git diff` | 查看未暂存的修改 |
-| `gh auth status` | 查看 GitHub CLI 登录状态 |
+| Command | Description |
+|---------|-------------|
+| `git status` | Check current status |
+| `git add .` | Add all modifications |
+| `git commit -m "msg"` | Commit changes |
+| `git push` | Push to remote |
+| `git pull` | Pull remote updates |
+| `git log --oneline` | View commit history |
+| `git diff` | View unstaged changes |
+| `gh auth status` | Check GitHub CLI login status |
 
 ---
 
-## 一键推送脚本
+## One-Click Push Script
 
-创建快捷脚本 `push.sh`：
+Create a shortcut script `push.sh`:
 
 ```bash
 #!/bin/bash
@@ -82,93 +82,93 @@ cd /Users/mac/Documents/SCONE-DNA
 git add .
 git commit -m "${1:-Update}"
 git push
-echo "✅ 推送完成！"
+echo "✅ Push complete!"
 ```
 
-使用方法：
+Usage:
 ```bash
-chmod +x push.sh  # 首次需要添加执行权限
-./push.sh "你的提交信息"
+chmod +x push.sh  # First time: add execute permission
+./push.sh "Your commit message"
 ```
 
 ---
 
-## 排除的文件夹
+## Excluded Folders
 
-以下文件夹在 `.gitignore` 中配置，**不会被上传**：
+The following folders are configured in `.gitignore` and **will not be uploaded**:
 
-- `1.0/` - 旧版本存档
-- `experiment_results/` - 实验结果数据
-- `__pycache__/` - Python 缓存
+- `1.0/` - Old version archive
+- `experiment_results/` - Experiment result data
+- `__pycache__/` - Python cache
 
 ---
 
-## 遇到问题？
+## Troubleshooting
 
-### 查看认证状态
+### Check Authentication Status
 ```bash
 gh auth status
 ```
 
-### 重新登录 GitHub CLI
+### Re-login to GitHub CLI
 ```bash
 gh auth login
-# 选择 GitHub.com → HTTPS → Login with web browser
+# Select GitHub.com → HTTPS → Login with web browser
 ```
 
-### 设置 Git 使用 GitHub CLI 认证
+### Set Git to Use GitHub CLI Authentication
 ```bash
 gh auth setup-git
 ```
 
-### 认证失败 (403)
+### Authentication Failed (403)
 ```bash
-# 方法1：重新登录 gh
+# Method 1: Re-login to gh
 gh auth login
 
-# 方法2：用 token 临时推送
+# Method 2: Temporary push with token
 git remote set-url origin https://cruan1991:TOKEN@github.com/cruan1991/SCONE-DNA.git
 git push
 git remote set-url origin https://github.com/cruan1991/SCONE-DNA.git
 ```
 
-### 冲突
+### Conflicts
 ```bash
-# 先拉取远程更新
+# Pull remote updates first
 git pull --rebase
-# 解决冲突后
+# After resolving conflicts
 git push
 ```
 
-### 撤销最后一次提交（未推送）
+### Undo Last Commit (Not Pushed)
 ```bash
 git reset --soft HEAD~1
 ```
 
 ---
 
-## 项目结构
+## Project Structure
 
 ```
 SCONE-DNA/
-├── fsm_constraint.py          # FSM约束控制器
-├── masked_arithmetic_codec.py # 带掩码算术编码
-├── minimal_arithmetic_codec.py # 标准算术编码器
-├── scone_fsm_arith.py         # 主API
-├── README.md                  # 项目文档
-├── requirements.txt           # 依赖说明
-├── GITHUB_PUSH_GUIDE.md       # 本文档
-├── scripts/                   # 实验脚本
+├── fsm_constraint.py          # FSM constraint controller
+├── masked_arithmetic_codec.py # Masked arithmetic coding
+├── minimal_arithmetic_codec.py # Standard arithmetic encoder
+├── scone_fsm_arith.py         # Main API
+├── README.md                  # Project documentation
+├── requirements.txt           # Dependency description
+├── GITHUB_PUSH_GUIDE.md       # This document
+├── scripts/                   # Experiment scripts
 │   ├── scone_experiments.py
 │   ├── scone_ablation_experiment.py
 │   ├── plot_metrics.py
 │   ├── visualize_fsm_steering.py
 │   └── ecc_simulation.py
-├── 1.0/                       # [不上传] 旧版本
-└── experiment_results/        # [不上传] 实验结果
+├── 1.0/                       # [Not uploaded] Old version
+└── experiment_results/        # [Not uploaded] Experiment results
 ```
 
 ---
 
-*最后更新：2026-01-25*
-*认证方式：GitHub CLI (gh auth)*
+*Last updated: 2026-01-26*
+*Authentication: GitHub CLI (gh auth)*

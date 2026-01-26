@@ -1,68 +1,68 @@
 #!/usr/bin/env python
 """
-带静态掩码层的DNA碱基算术编码器
+DNA Base Arithmetic Encoder with Static Masking Layer
 
-在标准算术编码器基础上添加掩码支持，用于FSM约束下的DNA编码。
-支持动态掩码，允许集大小可以是4、3、2或1。
+Adds masking support on top of the standard arithmetic encoder for FSM-constrained DNA encoding.
+Supports dynamic masking where allowed set size can be 4, 3, 2, or 1.
 """
 
 from typing import List, Tuple, Optional
 
 
 # ==============================================================================
-# 常量定义
+# Constants
 # ==============================================================================
 
-# DNA碱基映射
+# DNA base mapping
 BASE_TO_INDEX = {'A': 0, 'T': 1, 'G': 2, 'C': 3}
 INDEX_TO_BASE = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
 NUM_BASES = 4
 
-# 算术编码常量
+# Arithmetic coding constants
 HALF = 0x80000000  # 2^31
 QUARTER = 0x40000000  # 2^30
 THREE_QUARTER = 0xC0000000  # 3 * 2^30
 LOW_INIT = 0
 HIGH_INIT = 0xFFFFFFFF  # 2^32 - 1
-TOT = 1 << 15  # 累积频率总数 (32768)
+TOT = 1 << 15  # Total cumulative frequency (32768)
 
 
 # ==============================================================================
-# 掩码和概率处理函数
+# Mask and Probability Processing Functions
 # ==============================================================================
 
 def apply_mask_and_renormalize(probs: List[float], mask: List[bool]) -> List[float]:
     """
-    应用掩码并重新归一化概率
+    Apply mask and renormalize probabilities
     
-    参数:
-        probs: 4个浮点数的列表，表示A,T,G,C的概率
-        mask: 4个布尔值的列表，True表示允许，False表示禁止
+    Args:
+        probs: List of 4 floats representing probabilities for A,T,G,C
+        mask: List of 4 booleans, True for allowed, False for forbidden
     
-    返回:
-        重新归一化后的概率列表（长度4，被掩码的位置为0）
+    Returns:
+        Renormalized probability list (length 4, masked positions are 0)
     
-    异常:
-        ValueError: 如果所有mask[i]都为False
+    Raises:
+        ValueError: If all mask[i] are False
     """
     if len(probs) != 4 or len(mask) != 4:
-        raise ValueError("probs和mask长度必须为4")
+        raise ValueError("probs and mask length must be 4")
     
-    # 检查是否至少有一个允许的碱基
+    # Check at least one base is allowed
     if not any(mask):
-        raise ValueError("至少需要一个允许的碱基（mask不能全为False）")
+        raise ValueError("At least one base must be allowed (mask cannot be all False)")
     
-    # 应用掩码
+    # Apply mask
     masked_probs = [p if m else 0.0 for p, m in zip(probs, mask)]
     
-    # 计算总和
+    # Calculate total
     total = sum(masked_probs)
     
-    # 重新归一化
+    # Renormalize
     if total > 0:
         normalized_probs = [p / total for p in masked_probs]
     else:
-        # 如果总和为0（所有允许的碱基概率都是0），均匀分配
+        # If total is 0 (all allowed bases have 0 probability), distribute uniformly
         allowed_count = sum(mask)
         normalized_probs = [1.0 / allowed_count if m else 0.0 for m in mask]
     
@@ -76,51 +76,51 @@ def probs_to_freqs_with_mask(
     eos_freq: int = 1
 ) -> List[int]:
     """
-    将概率转换为频率（用于算术编码）
+    Convert probabilities to frequencies (for arithmetic coding)
     
-    参数:
-        probs: 重新归一化后的概率列表（来自apply_mask_and_renormalize）
-        mask: 掩码列表
-        tot: 累积频率总数
-        eos_freq: EOS符号的频率
+    Args:
+        probs: Renormalized probability list (from apply_mask_and_renormalize)
+        mask: Mask list
+        tot: Total cumulative frequency
+        eos_freq: Frequency for EOS symbol
     
-    返回:
-        频率列表，长度为允许碱基数+1（最后一个是EOS）
+    Returns:
+        Frequency list, length is allowed_bases + 1 (last one is EOS)
     """
-    # 计算允许的碱基数量
+    # Calculate number of allowed bases
     allowed_count = sum(mask)
     
     if allowed_count == 0:
-        raise ValueError("至少需要一个允许的碱基")
+        raise ValueError("At least one base must be allowed")
     
-    # 计算可用于碱基的总频率
+    # Calculate available frequency for bases
     available_freq = tot - eos_freq
     
-    # 只为允许的碱基分配频率
+    # Only allocate frequency for allowed bases
     freqs = []
     for i, (p, m) in enumerate(zip(probs, mask)):
         if m:
             freq = max(1, int(p * available_freq))
             freqs.append(freq)
     
-    # 调整频率以确保总和正确
+    # Adjust frequencies to ensure total is correct
     total_freq = sum(freqs)
     target_freq = available_freq
     
     if total_freq != target_freq and len(freqs) > 0:
         diff = target_freq - total_freq
-        # 将差值加到最大频率上
+        # Add difference to largest frequency
         max_idx = freqs.index(max(freqs))
         freqs[max_idx] += diff
     
-    # 添加EOS频率
+    # Add EOS frequency
     freqs.append(eos_freq)
     
     return freqs
 
 
 def freqs_to_cumfreq(freqs: List[int]) -> List[int]:
-    """将频率转换为累积频率"""
+    """Convert frequencies to cumulative frequencies"""
     cumfreq = [0]
     for f in freqs:
         cumfreq.append(cumfreq[-1] + f)
@@ -128,21 +128,21 @@ def freqs_to_cumfreq(freqs: List[int]) -> List[int]:
 
 
 def get_allowed_indices(mask: List[bool]) -> List[int]:
-    """获取允许的碱基索引列表"""
+    """Get list of allowed base indices"""
     return [i for i, m in enumerate(mask) if m]
 
 
 def symbol_to_masked_index(symbol: int, mask: List[bool]) -> int:
-    """将原始符号索引转换为掩码后的索引"""
+    """Convert original symbol index to masked index"""
     if not mask[symbol]:
-        raise ValueError(f"符号{symbol}被掩码禁止")
+        raise ValueError(f"Symbol {symbol} is forbidden by mask")
     
     allowed = get_allowed_indices(mask)
     return allowed.index(symbol)
 
 
 def masked_index_to_symbol(masked_idx: int, mask: List[bool]) -> int:
-    """将掩码后的索引转换为原始符号索引"""
+    """Convert masked index to original symbol index"""
     allowed = get_allowed_indices(mask)
     if masked_idx >= len(allowed):
         return -1  # EOS
@@ -150,11 +150,11 @@ def masked_index_to_symbol(masked_idx: int, mask: List[bool]) -> int:
 
 
 # ==============================================================================
-# 带掩码的算术编码器
+# Masked Arithmetic Encoder
 # ==============================================================================
 
 class MaskedArithmeticEncoder:
-    """带掩码的算术编码器"""
+    """Arithmetic encoder with masking support"""
     
     def __init__(self):
         self.low = LOW_INIT
@@ -163,21 +163,21 @@ class MaskedArithmeticEncoder:
         self.bitstream = []
     
     def reset(self):
-        """重置编码器状态"""
+        """Reset encoder state"""
         self.low = LOW_INIT
         self.high = HIGH_INIT
         self.pending_bits = 0
         self.bitstream = []
     
     def _output_bit(self, bit: int):
-        """输出一位并处理待处理位"""
+        """Output one bit and handle pending bits"""
         self.bitstream.append(bit)
         for _ in range(self.pending_bits):
             self.bitstream.append(1 - bit)
         self.pending_bits = 0
     
     def _renormalize(self):
-        """重新归一化"""
+        """Renormalize"""
         while True:
             if self.high < HALF:
                 self._output_bit(0)
@@ -195,7 +195,7 @@ class MaskedArithmeticEncoder:
                 break
     
     def encode_symbol(self, symbol_idx: int, cumfreq: List[int], tot: int):
-        """编码一个符号"""
+        """Encode one symbol"""
         range_size = self.high - self.low + 1
         
         symbol_low = cumfreq[symbol_idx]
@@ -213,7 +213,7 @@ class MaskedArithmeticEncoder:
         self._renormalize()
     
     def finish(self):
-        """完成编码，输出最终位"""
+        """Finish encoding, output final bits"""
         self.pending_bits += 1
         if self.low < QUARTER:
             self._output_bit(0)
@@ -221,12 +221,12 @@ class MaskedArithmeticEncoder:
             self._output_bit(1)
     
     def get_bitstream(self) -> List[int]:
-        """获取位流"""
+        """Get bitstream"""
         return self.bitstream
 
 
 class MaskedArithmeticDecoder:
-    """带掩码的算术解码器"""
+    """Arithmetic decoder with masking support"""
     
     def __init__(self):
         self.low = LOW_INIT
@@ -236,14 +236,14 @@ class MaskedArithmeticDecoder:
         self.bit_idx = 0
     
     def reset(self):
-        """重置解码器状态"""
+        """Reset decoder state"""
         self.low = LOW_INIT
         self.high = HIGH_INIT
         self.code = 0
         self.bit_idx = 0
     
     def _read_bit(self) -> int:
-        """读取一位"""
+        """Read one bit"""
         if self.bit_idx < len(self.bitstream):
             bit = self.bitstream[self.bit_idx]
             self.bit_idx += 1
@@ -251,19 +251,19 @@ class MaskedArithmeticDecoder:
         return 0
     
     def initialize(self, bitstream: List[int]):
-        """初始化解码器"""
+        """Initialize decoder"""
         self.bitstream = bitstream
         self.bit_idx = 0
         self.low = LOW_INIT
         self.high = HIGH_INIT
         
-        # 读取前32位
+        # Read first 32 bits
         self.code = 0
         for _ in range(32):
             self.code = self.code * 2 + self._read_bit()
     
     def _renormalize(self):
-        """重新归一化"""
+        """Renormalize"""
         while True:
             if self.high < HALF:
                 self.low = self.low * 2
@@ -281,12 +281,12 @@ class MaskedArithmeticDecoder:
                 break
     
     def decode_symbol(self, cumfreq: List[int], tot: int) -> int:
-        """解码一个符号"""
+        """Decode one symbol"""
         range_size = self.high - self.low + 1
         
-        # 找到code落在哪个符号的区间内
+        # Find which symbol's interval code falls into
         num_symbols = len(cumfreq) - 1
-        symbol = num_symbols - 1  # 默认为最后一个（EOS）
+        symbol = num_symbols - 1  # Default to last one (EOS)
         
         for i in range(num_symbols - 1, -1, -1):
             symbol_low_bound = self.low + (range_size * cumfreq[i]) // tot
@@ -299,7 +299,7 @@ class MaskedArithmeticDecoder:
                 symbol = i
                 break
         
-        # 更新区间
+        # Update interval
         symbol_low = cumfreq[symbol]
         symbol_high = cumfreq[symbol + 1]
         
@@ -318,7 +318,7 @@ class MaskedArithmeticDecoder:
 
 
 # ==============================================================================
-# 主要编码/解码函数
+# Main Encode/Decode Functions
 # ==============================================================================
 
 def encode_with_mask(
@@ -327,28 +327,28 @@ def encode_with_mask(
     base_probs: List[float]
 ) -> List[int]:
     """
-    带掩码的编码
+    Encode with masking
     
-    参数:
-        symbols: 符号列表，每个符号∈{0,1,2,3}表示A,T,G,C
-        masks: 掩码列表，与symbols等长
-        base_probs: 基础概率分布[p_A, p_T, p_G, p_C]
+    Args:
+        symbols: Symbol list, each symbol ∈ {0,1,2,3} representing A,T,G,C
+        masks: Mask list, same length as symbols
+        base_probs: Base probability distribution [p_A, p_T, p_G, p_C]
     
-    返回:
-        位流（整数列表）
+    Returns:
+        Bitstream (list of integers)
     """
     if len(symbols) != len(masks):
-        raise ValueError("symbols和masks长度必须相同")
+        raise ValueError("symbols and masks must have same length")
     
     if len(symbols) == 0:
-        # 空序列，只编码EOS
+        # Empty sequence, only encode EOS
         encoder = MaskedArithmeticEncoder()
-        # 使用默认掩码（全部允许）
+        # Use default mask (all allowed)
         default_mask = [True] * 4
         masked_probs = apply_mask_and_renormalize(base_probs, default_mask)
         freqs = probs_to_freqs_with_mask(masked_probs, default_mask)
         cumfreq = freqs_to_cumfreq(freqs)
-        # EOS索引是最后一个
+        # EOS index is the last one
         eos_idx = len(freqs) - 1
         encoder.encode_symbol(eos_idx, cumfreq, TOT)
         encoder.finish()
@@ -356,31 +356,31 @@ def encode_with_mask(
     
     encoder = MaskedArithmeticEncoder()
     
-    # 编码每个符号
+    # Encode each symbol
     for i, (symbol, mask) in enumerate(zip(symbols, masks)):
         if not mask[symbol]:
-            raise ValueError(f"位置{i}的符号{symbol}被掩码禁止")
+            raise ValueError(f"Symbol {symbol} at position {i} is forbidden by mask")
         
         allowed_count = sum(mask)
         
         if allowed_count == 1:
-            # 只有一个允许的碱基，不需要编码
-            # 解码器知道掩码，可以直接确定
+            # Only one allowed base, no need to encode
+            # Decoder knows the mask, can determine directly
             continue
         
-        # 应用掩码并重新归一化
+        # Apply mask and renormalize
         masked_probs = apply_mask_and_renormalize(base_probs, mask)
         freqs = probs_to_freqs_with_mask(masked_probs, mask)
         cumfreq = freqs_to_cumfreq(freqs)
         
-        # 将原始符号索引转换为掩码后的索引
+        # Convert original symbol index to masked index
         masked_idx = symbol_to_masked_index(symbol, mask)
         
-        # 编码
+        # Encode
         encoder.encode_symbol(masked_idx, cumfreq, TOT)
     
-    # 编码EOS
-    # 使用最后一个掩码（或默认掩码）
+    # Encode EOS
+    # Use last mask (or default mask)
     last_mask = masks[-1] if masks else [True] * 4
     allowed_count = sum(last_mask)
     
@@ -402,22 +402,22 @@ def decode_with_mask(
     max_symbols: Optional[int] = None
 ) -> List[int]:
     """
-    带掩码的解码
+    Decode with masking
     
-    参数:
-        bits: 位流
-        masks: 掩码列表
-        base_probs: 基础概率分布
-        max_symbols: 最大解码符号数（可选，用于安全）
+    Args:
+        bits: Bitstream
+        masks: Mask list
+        base_probs: Base probability distribution
+        max_symbols: Maximum number of symbols to decode (optional, for safety)
     
-    返回:
-        解码后的符号列表
+    Returns:
+        Decoded symbol list
     """
     if max_symbols is None:
-        max_symbols = len(masks) + 1  # 允许稍微多一点
+        max_symbols = len(masks) + 1  # Allow slightly more
     
     if len(masks) == 0:
-        # 空掩码，解码EOS
+        # Empty masks, decode EOS
         decoder = MaskedArithmeticDecoder()
         decoder.initialize(bits)
         
@@ -432,7 +432,7 @@ def decode_with_mask(
         if symbol == eos_idx:
             return []
         else:
-            raise ValueError("解码错误：期望EOS但得到其他符号")
+            raise ValueError("Decode error: expected EOS but got other symbol")
     
     decoder = MaskedArithmeticDecoder()
     decoder.initialize(bits)
@@ -441,32 +441,32 @@ def decode_with_mask(
     
     for i in range(max_symbols):
         if i >= len(masks):
-            # 超出掩码范围，检查EOS
+            # Exceeded mask range, check for EOS
             break
         
         mask = masks[i]
         allowed_count = sum(mask)
         
         if allowed_count == 1:
-            # 只有一个允许的碱基，直接确定
+            # Only one allowed base, determine directly
             allowed = get_allowed_indices(mask)
             decoded_symbols.append(allowed[0])
             continue
         
-        # 应用掩码并重新归一化
+        # Apply mask and renormalize
         masked_probs = apply_mask_and_renormalize(base_probs, mask)
         freqs = probs_to_freqs_with_mask(masked_probs, mask)
         cumfreq = freqs_to_cumfreq(freqs)
         
-        # 解码
+        # Decode
         masked_idx = decoder.decode_symbol(cumfreq, TOT)
         
-        # EOS检查
+        # EOS check
         eos_idx = len(freqs) - 1
         if masked_idx == eos_idx:
             break
         
-        # 将掩码后的索引转换为原始符号索引
+        # Convert masked index to original symbol index
         symbol = masked_index_to_symbol(masked_idx, mask)
         if symbol == -1:
             break  # EOS
@@ -477,80 +477,80 @@ def decode_with_mask(
 
 
 # ==============================================================================
-# 测试函数
+# Test Functions
 # ==============================================================================
 
 def test_apply_mask_and_renormalize():
-    """测试掩码和重新归一化"""
-    print("测试 apply_mask_and_renormalize:")
+    """Test mask and renormalize"""
+    print("Testing apply_mask_and_renormalize:")
     
-    # 测试1：全部允许
+    # Test 1: All allowed
     probs = [0.25, 0.25, 0.25, 0.25]
     mask = [True, True, True, True]
     result = apply_mask_and_renormalize(probs, mask)
-    assert abs(sum(result) - 1.0) < 1e-10, f"总和应为1，实际为{sum(result)}"
-    print(f"  全部允许: {result} ✓")
+    assert abs(sum(result) - 1.0) < 1e-10, f"Sum should be 1, got {sum(result)}"
+    print(f"  All allowed: {result} ✓")
     
-    # 测试2：只允许2个
+    # Test 2: Only 2 allowed
     mask = [True, False, True, False]
     result = apply_mask_and_renormalize(probs, mask)
     assert abs(sum(result) - 1.0) < 1e-10
     assert result[1] == 0 and result[3] == 0
-    print(f"  允许A,G: {result} ✓")
+    print(f"  Allow A,G: {result} ✓")
     
-    # 测试3：只允许1个
+    # Test 3: Only 1 allowed
     mask = [False, True, False, False]
     result = apply_mask_and_renormalize(probs, mask)
     assert result[1] == 1.0
-    print(f"  只允许T: {result} ✓")
+    print(f"  Only allow T: {result} ✓")
     
-    # 测试4：不均匀概率
+    # Test 4: Uneven probabilities
     probs = [0.5, 0.3, 0.15, 0.05]
     mask = [True, True, False, False]
     result = apply_mask_and_renormalize(probs, mask)
     assert abs(sum(result) - 1.0) < 1e-10
     assert result[2] == 0 and result[3] == 0
-    print(f"  不均匀概率: {result} ✓")
+    print(f"  Uneven probabilities: {result} ✓")
     
-    # 测试5：全部禁止应抛出异常
+    # Test 5: All forbidden should raise exception
     try:
         mask = [False, False, False, False]
         apply_mask_and_renormalize(probs, mask)
-        assert False, "应该抛出异常"
+        assert False, "Should raise exception"
     except ValueError:
-        print("  全部禁止抛出异常 ✓")
+        print("  All forbidden raises exception ✓")
     
-    print("  apply_mask_and_renormalize 测试通过 ✓")
+    print("  apply_mask_and_renormalize test passed ✓")
 
 
 def test_single_allowed():
-    """测试只允许1个碱基的情况"""
-    print("\n测试只允许1个碱基的情况:")
+    """Test single allowed base case"""
+    print("\nTesting single allowed base case:")
     
     base_probs = [0.25, 0.25, 0.25, 0.25]
     
-    # 测试各种单碱基情况
+    # Test each single base case
     for allowed_base in range(4):
         mask = [i == allowed_base for i in range(4)]
-        symbols = [allowed_base] * 10  # 10个相同的符号
+        symbols = [allowed_base] * 10  # 10 identical symbols
         masks = [mask] * 10
         
         bits = encode_with_mask(symbols, masks, base_probs)
         decoded = decode_with_mask(bits, masks, base_probs)
         
-        assert decoded == symbols, f"解码失败：{decoded} != {symbols}"
-        print(f"  只允许碱基{allowed_base}: 位流长度={len(bits)}, 匹配 ✓")
+        assert decoded == symbols, f"Decode failed: {decoded} != {symbols}"
+        print(f"  Only allow base {allowed_base}: bitstream length={len(bits)}, match ✓")
     
-    print("  单碱基测试通过 ✓")
+    print("  Single base test passed ✓")
 
 
 def test_two_allowed():
-    """测试允许2个碱基的情况"""
-    print("\n测试允许2个碱基的情况:")
+    """Test two allowed bases case"""
+    print("\nTesting two allowed bases case:")
     
     base_probs = [0.25, 0.25, 0.25, 0.25]
     
-    # 测试各种2碱基组合
+    # Test various 2-base combinations
     test_cases = [
         ([True, True, False, False], [0, 1, 0, 1, 0]),  # A, T
         ([True, False, True, False], [0, 2, 0, 2, 2]),  # A, G
@@ -564,19 +564,19 @@ def test_two_allowed():
         bits = encode_with_mask(symbols, masks, base_probs)
         decoded = decode_with_mask(bits, masks, base_probs)
         
-        assert decoded == symbols, f"解码失败：{decoded} != {symbols}"
-        print(f"  掩码{mask}: 位流长度={len(bits)}, 匹配 ✓")
+        assert decoded == symbols, f"Decode failed: {decoded} != {symbols}"
+        print(f"  Mask {mask}: bitstream length={len(bits)}, match ✓")
     
-    print("  2碱基测试通过 ✓")
+    print("  2-base test passed ✓")
 
 
 def test_three_allowed():
-    """测试允许3个碱基的情况"""
-    print("\n测试允许3个碱基的情况:")
+    """Test three allowed bases case"""
+    print("\nTesting three allowed bases case:")
     
     base_probs = [0.25, 0.25, 0.25, 0.25]
     
-    # 测试各种3碱基组合
+    # Test various 3-base combinations
     test_cases = [
         ([True, True, True, False], [0, 1, 2, 0, 1]),   # A, T, G
         ([True, True, False, True], [0, 1, 3, 0, 3]),   # A, T, C
@@ -590,15 +590,15 @@ def test_three_allowed():
         bits = encode_with_mask(symbols, masks, base_probs)
         decoded = decode_with_mask(bits, masks, base_probs)
         
-        assert decoded == symbols, f"解码失败：{decoded} != {symbols}"
-        print(f"  掩码{mask}: 位流长度={len(bits)}, 匹配 ✓")
+        assert decoded == symbols, f"Decode failed: {decoded} != {symbols}"
+        print(f"  Mask {mask}: bitstream length={len(bits)}, match ✓")
     
-    print("  3碱基测试通过 ✓")
+    print("  3-base test passed ✓")
 
 
 def test_four_allowed():
-    """测试允许4个碱基的情况"""
-    print("\n测试允许4个碱基的情况:")
+    """Test four allowed bases case"""
+    print("\nTesting four allowed bases case:")
     
     base_probs = [0.25, 0.25, 0.25, 0.25]
     mask = [True, True, True, True]
@@ -609,40 +609,40 @@ def test_four_allowed():
     bits = encode_with_mask(symbols, masks, base_probs)
     decoded = decode_with_mask(bits, masks, base_probs)
     
-    assert decoded == symbols, f"解码失败：{decoded} != {symbols}"
-    print(f"  全部允许: 位流长度={len(bits)}, 匹配 ✓")
+    assert decoded == symbols, f"Decode failed: {decoded} != {symbols}"
+    print(f"  All allowed: bitstream length={len(bits)}, match ✓")
     
-    print("  4碱基测试通过 ✓")
+    print("  4-base test passed ✓")
 
 
 def test_mixed_masks():
-    """测试混合掩码的情况"""
-    print("\n测试混合掩码:")
+    """Test mixed masks case"""
+    print("\nTesting mixed masks:")
     
     base_probs = [0.25, 0.25, 0.25, 0.25]
     
-    # 掩码随步骤变化
+    # Masks change with steps
     masks = [
-        [True, True, True, True],    # 4个允许
-        [True, True, False, False],  # 2个允许
-        [True, False, False, False], # 1个允许
-        [True, True, True, False],   # 3个允许
-        [False, True, True, True],   # 3个允许
+        [True, True, True, True],    # 4 allowed
+        [True, True, False, False],  # 2 allowed
+        [True, False, False, False], # 1 allowed
+        [True, True, True, False],   # 3 allowed
+        [False, True, True, True],   # 3 allowed
     ]
-    symbols = [0, 1, 0, 2, 1]  # 每个符号必须被对应掩码允许
+    symbols = [0, 1, 0, 2, 1]  # Each symbol must be allowed by corresponding mask
     
     bits = encode_with_mask(symbols, masks, base_probs)
     decoded = decode_with_mask(bits, masks, base_probs)
     
-    assert decoded == symbols, f"解码失败：{decoded} != {symbols}"
-    print(f"  混合掩码: 位流长度={len(bits)}, 匹配 ✓")
+    assert decoded == symbols, f"Decode failed: {decoded} != {symbols}"
+    print(f"  Mixed masks: bitstream length={len(bits)}, match ✓")
     
-    print("  混合掩码测试通过 ✓")
+    print("  Mixed masks test passed ✓")
 
 
 def test_empty_sequence():
-    """测试空序列"""
-    print("\n测试空序列:")
+    """Test empty sequence"""
+    print("\nTesting empty sequence:")
     
     base_probs = [0.25, 0.25, 0.25, 0.25]
     
@@ -652,15 +652,15 @@ def test_empty_sequence():
     bits = encode_with_mask(symbols, masks, base_probs)
     decoded = decode_with_mask(bits, masks, base_probs)
     
-    assert decoded == symbols, f"解码失败：{decoded} != {symbols}"
-    print(f"  空序列: 位流长度={len(bits)}, 匹配 ✓")
+    assert decoded == symbols, f"Decode failed: {decoded} != {symbols}"
+    print(f"  Empty sequence: bitstream length={len(bits)}, match ✓")
     
-    print("  空序列测试通过 ✓")
+    print("  Empty sequence test passed ✓")
 
 
 def test_random_exhaustive():
-    """随机详尽测试"""
-    print("\n随机详尽测试 (10000步):")
+    """Random exhaustive test"""
+    print("\nRandom exhaustive test (10000 steps):")
     
     import random
     random.seed(42)
@@ -675,18 +675,18 @@ def test_random_exhaustive():
     failed = 0
     
     for trial in range(num_trials):
-        # 随机生成掩码和符号
+        # Randomly generate masks and symbols
         masks = []
         symbols = []
         
         for _ in range(steps_per_trial):
-            # 随机生成掩码（至少1个True）
+            # Randomly generate mask (at least 1 True)
             while True:
                 mask = [random.random() > 0.3 for _ in range(4)]
                 if any(mask):
                     break
             
-            # 从允许的碱基中随机选择
+            # Randomly choose from allowed bases
             allowed = get_allowed_indices(mask)
             symbol = random.choice(allowed)
             
@@ -702,38 +702,38 @@ def test_random_exhaustive():
             else:
                 failed += 1
                 if failed <= 5:
-                    print(f"  失败案例 {trial}:")
-                    print(f"    输入长度: {len(symbols)}")
-                    print(f"    解码长度: {len(decoded)}")
-                    # 找到第一个不匹配
+                    print(f"  Failed case {trial}:")
+                    print(f"    Input length: {len(symbols)}")
+                    print(f"    Decoded length: {len(decoded)}")
+                    # Find first mismatch
                     for i in range(min(len(symbols), len(decoded))):
                         if symbols[i] != decoded[i]:
-                            print(f"    第一个不匹配位置: {i}")
-                            print(f"    掩码: {masks[i]}")
-                            print(f"    期望: {symbols[i]}, 解码: {decoded[i]}")
+                            print(f"    First mismatch position: {i}")
+                            print(f"    Mask: {masks[i]}")
+                            print(f"    Expected: {symbols[i]}, Decoded: {decoded[i]}")
                             break
         except Exception as e:
             failed += 1
             if failed <= 5:
-                print(f"  异常案例 {trial}: {e}")
+                print(f"  Exception case {trial}: {e}")
     
-    print(f"  总试验数: {num_trials}")
-    print(f"  总步骤数: {total_steps}")
-    print(f"  通过: {passed}")
-    print(f"  失败: {failed}")
-    print(f"  成功率: {passed/num_trials*100:.2f}%")
+    print(f"  Total trials: {num_trials}")
+    print(f"  Total steps: {total_steps}")
+    print(f"  Passed: {passed}")
+    print(f"  Failed: {failed}")
+    print(f"  Success rate: {passed/num_trials*100:.2f}%")
     
-    assert failed == 0, f"随机测试失败: {failed}个案例失败"
-    print("  随机详尽测试通过 ✓")
+    assert failed == 0, f"Random test failed: {failed} cases failed"
+    print("  Random exhaustive test passed ✓")
 
 
 def test_uneven_probs():
-    """测试不均匀概率"""
-    print("\n测试不均匀概率:")
+    """Test uneven probabilities"""
+    print("\nTesting uneven probabilities:")
     
     base_probs = [0.5, 0.3, 0.15, 0.05]
     
-    # 测试各种掩码
+    # Test various masks
     test_cases = [
         ([True, True, True, True], [0, 0, 0, 1, 1, 2, 3]),
         ([True, True, False, False], [0, 0, 1, 0, 1]),
@@ -746,16 +746,16 @@ def test_uneven_probs():
         bits = encode_with_mask(symbols, masks, base_probs)
         decoded = decode_with_mask(bits, masks, base_probs)
         
-        assert decoded == symbols, f"解码失败：{decoded} != {symbols}"
-        print(f"  掩码{mask}: 位流长度={len(bits)}, 匹配 ✓")
+        assert decoded == symbols, f"Decode failed: {decoded} != {symbols}"
+        print(f"  Mask {mask}: bitstream length={len(bits)}, match ✓")
     
-    print("  不均匀概率测试通过 ✓")
+    print("  Uneven probabilities test passed ✓")
 
 
 def run_all_tests():
-    """运行所有测试"""
+    """Run all tests"""
     print("=" * 70)
-    print("带掩码的算术编码器测试")
+    print("Masked Arithmetic Encoder Tests")
     print("=" * 70)
     
     test_apply_mask_and_renormalize()
@@ -769,7 +769,7 @@ def run_all_tests():
     test_random_exhaustive()
     
     print("\n" + "=" * 70)
-    print("🎉 所有测试通过！")
+    print("🎉 All tests passed!")
     print("=" * 70)
 
 

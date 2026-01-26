@@ -1,151 +1,151 @@
 #!/usr/bin/env python
 """
-标准32位整数算术编码器和解码器
+Standard 32-bit Integer Arithmetic Encoder and Decoder
 
-实现标准算术编码算法：
-- 使用32位整数算术
-- 包含high（inclusive）
-- 经典E1/E2/E3重新归一化
-- 显式EOS符号用于终止
-- 累积频率模型
+Implements standard arithmetic coding algorithm:
+- Uses 32-bit integer arithmetic
+- Inclusive high boundary
+- Classic E1/E2/E3 renormalization
+- Explicit EOS symbol for termination
+- Cumulative frequency model
 """
 
 
 class StandardArithmeticEncoder:
-    """标准32位整数算术编码器"""
+    """Standard 32-bit integer arithmetic encoder"""
     
-    # 常量定义
+    # Constants
     HALF = 0x80000000  # 2^31
     QUARTER = 0x40000000  # 2^30
     THREE_QUARTER = 0xC0000000  # 3 * 2^30
     LOW = 0
     HIGH = 0xFFFFFFFF  # 2^32 - 1
-    TOT = 1 << 15  # 累积频率总数（32768）
+    TOT = 1 << 15  # Total cumulative frequency (32768)
     
     def __init__(self):
-        """初始化编码器"""
+        """Initialize encoder"""
         pass
     
     def _build_cumfreq(self, probs):
         """
-        构建累积频率表
+        Build cumulative frequency table
         
-        参数:
-            probs: 概率列表 [p0, p1, ..., pM-1]
+        Args:
+            probs: Probability list [p0, p1, ..., pM-1]
         
-        返回:
-            cumfreq: 累积频率列表 [0, f0, f0+f1, ..., TOT]
+        Returns:
+            cumfreq: Cumulative frequency list [0, f0, f0+f1, ..., TOT]
         """
         if abs(sum(probs) - 1.0) > 1e-5:
-            raise ValueError(f"概率总和必须为1.0，当前为{sum(probs)}")
+            raise ValueError(f"Probabilities must sum to 1.0, got {sum(probs)}")
         
-        # 归一化概率以处理浮点数误差
+        # Normalize probabilities to handle floating point errors
         total = sum(probs)
         if abs(total - 1.0) > 1e-10:
             probs = [p / total for p in probs]
         
-        # 将概率转换为频率（整数）
+        # Convert probabilities to frequencies (integers)
         freqs = []
         for p in probs:
-            freq = max(1, int(p * self.TOT))  # 至少为1，避免零频率
+            freq = max(1, int(p * self.TOT))  # At least 1 to avoid zero frequency
             freqs.append(freq)
         
-        # 调整频率以确保总和等于TOT
+        # Adjust frequencies to ensure sum equals TOT
         total_freq = sum(freqs)
         if total_freq != self.TOT:
-            # 按比例调整
+            # Scale proportionally
             scale = self.TOT / total_freq
             freqs = [max(1, int(f * scale)) for f in freqs]
-            # 微调以确保总和正确
+            # Fine-tune to ensure correct sum
             total_freq = sum(freqs)
             diff = self.TOT - total_freq
             if diff != 0:
-                # 将差值加到最大频率上
+                # Add difference to largest frequency
                 max_idx = freqs.index(max(freqs))
                 freqs[max_idx] += diff
         
-        # 构建累积频率
+        # Build cumulative frequency
         cumfreq = [0]
         for f in freqs:
             cumfreq.append(cumfreq[-1] + f)
         
-        # 确保最后一个等于TOT
+        # Ensure last element equals TOT
         cumfreq[-1] = self.TOT
         
         return cumfreq
     
     def encode(self, symbols, probs):
         """
-        编码符号序列
+        Encode symbol sequence
         
-        参数:
-            symbols: 符号列表（整数，0到M-1）
-            probs: 概率列表 [p0, p1, ..., pM-1]
+        Args:
+            symbols: Symbol list (integers, 0 to M-1)
+            probs: Probability list [p0, p1, ..., pM-1]
         
-        返回:
-            bitstream: 位流（整数列表，0或1）
+        Returns:
+            bitstream: Bitstream (list of integers, 0 or 1)
         """
         M = len(probs)
         
-        # 构建累积频率（包含EOS符号）
-        # EOS符号的概率设为最小概率的1/10，但至少保证有足够的频率
+        # Build cumulative frequency (including EOS symbol)
+        # EOS symbol probability set to 1/10 of minimum probability, but ensure enough frequency
         min_prob = min(probs) if probs else 0.01
         eos_prob = min(min_prob / 10, 0.001)
-        # 确保EOS符号至少有64的频率（约0.002的TOT）
+        # Ensure EOS symbol has at least 64 frequency (about 0.002 of TOT)
         min_eos_freq = 64
         min_eos_prob = min_eos_freq / self.TOT
         eos_prob = max(eos_prob, min_eos_prob)
         
-        # 调整概率以包含EOS
+        # Adjust probabilities to include EOS
         scale = 1.0 / (1.0 + eos_prob)
         adjusted_probs = [p * scale for p in probs]
         adjusted_probs.append(eos_prob)
         
-        # 构建累积频率
+        # Build cumulative frequency
         cumfreq = self._build_cumfreq(adjusted_probs)
         
-        # 初始化区间
+        # Initialize interval
         low = self.LOW
         high = self.HIGH
         pending_bits = 0
         
-        # 存储输出的位
+        # Store output bits
         bitstream = []
         
-        # 编码每个符号
+        # Encode each symbol
         for symbol in symbols:
             if symbol < 0 or symbol >= M:
-                raise ValueError(f"符号 {symbol} 超出范围 [0, {M-1}]")
+                raise ValueError(f"Symbol {symbol} out of range [0, {M-1}]")
             
-            # 计算区间大小（包含high，所以+1）
+            # Calculate interval size (inclusive high, so +1)
             range_size = high - low + 1
             
-            # 根据符号确定新区间
+            # Determine new interval based on symbol
             symbol_low = cumfreq[symbol]
             symbol_high = cumfreq[symbol + 1]
             
             new_low = low + (range_size * symbol_low) // self.TOT
             new_high = low + (range_size * symbol_high) // self.TOT - 1
             
-            # 验证不变量：确保 low <= high
+            # Verify invariant: ensure low <= high
             if new_low > new_high:
-                # 如果出现这种情况，调整new_high
+                # If this happens, adjust new_high
                 new_high = new_low
             
-            # 更新区间
+            # Update interval
             low = new_low
             high = new_high
             
-            # 验证不变量
+            # Verify invariants
             assert 0 <= low <= high <= self.HIGH, \
-                f"区间不变量违反: low={low}, high={high}"
+                f"Interval invariant violated: low={low}, high={high}"
             assert high - low + 1 > 0, \
-                f"区间大小无效: range={high - low + 1}"
+                f"Invalid interval size: range={high - low + 1}"
             
-            # 重新归一化（E1/E2/E3）
+            # Renormalize (E1/E2/E3)
             while True:
                 if high < self.HALF:
-                    # E1: 输出0，处理待处理位
+                    # E1: Output 0, handle pending bits
                     bitstream.append(0)
                     for _ in range(pending_bits):
                         bitstream.append(1)
@@ -153,7 +153,7 @@ class StandardArithmeticEncoder:
                     low = low * 2
                     high = high * 2 + 1
                 elif low >= self.HALF:
-                    # E2: 输出1，处理待处理位
+                    # E2: Output 1, handle pending bits
                     bitstream.append(1)
                     for _ in range(pending_bits):
                         bitstream.append(0)
@@ -161,14 +161,14 @@ class StandardArithmeticEncoder:
                     low = (low - self.HALF) * 2
                     high = (high - self.HALF) * 2 + 1
                 elif low >= self.QUARTER and high < self.THREE_QUARTER:
-                    # E3: 下溢，增加待处理位
+                    # E3: Underflow, increase pending bits
                     pending_bits += 1
                     low = (low - self.QUARTER) * 2
                     high = (high - self.QUARTER) * 2 + 1
                 else:
                     break
         
-        # 编码EOS符号
+        # Encode EOS symbol
         eos_symbol = M
         range_size = high - low + 1
         symbol_low = cumfreq[eos_symbol]
@@ -177,20 +177,20 @@ class StandardArithmeticEncoder:
         new_low = low + (range_size * symbol_low) // self.TOT
         new_high = low + (range_size * symbol_high) // self.TOT - 1
         
-        # 验证不变量
+        # Verify invariant
         if new_low > new_high:
             new_high = new_low
         
         low = new_low
         high = new_high
         
-        # 验证不变量
+        # Verify invariants
         assert 0 <= low <= high <= self.HIGH, \
-            f"EOS编码后区间不变量违反: low={low}, high={high}"
+            f"Interval invariant violated after EOS: low={low}, high={high}"
         assert high - low + 1 > 0, \
-            f"EOS编码后区间大小无效: range={high - low + 1}"
+            f"Invalid interval size after EOS: range={high - low + 1}"
         
-        # 最终重新归一化（输出所有可能的位，直到无法继续）
+        # Final renormalization (output all possible bits until cannot continue)
         while True:
             if high < self.HALF:
                 bitstream.append(0)
@@ -213,9 +213,9 @@ class StandardArithmeticEncoder:
             else:
                 break
         
-        # finish(): 输出pending_bits + 2位以消除最终区间的歧义
-        # 标准方法：增加一个pending_bit，然后输出
-        # 这确保解码器能够唯一识别最终区间
+        # finish(): Output pending_bits + 2 bits to disambiguate final interval
+        # Standard method: increment pending_bit, then output
+        # This ensures decoder can uniquely identify final interval
         pending_bits += 1
         if low < self.QUARTER:
             bitstream.append(0)
@@ -230,9 +230,9 @@ class StandardArithmeticEncoder:
 
 
 class StandardArithmeticDecoder:
-    """标准32位整数算术解码器"""
+    """Standard 32-bit integer arithmetic decoder"""
     
-    # 常量定义（与编码器相同）
+    # Constants (same as encoder)
     HALF = 0x80000000
     QUARTER = 0x40000000
     THREE_QUARTER = 0xC0000000
@@ -241,15 +241,15 @@ class StandardArithmeticDecoder:
     TOT = 1 << 15
     
     def __init__(self):
-        """初始化解码器"""
+        """Initialize decoder"""
         pass
     
     def _build_cumfreq(self, probs):
-        """构建累积频率表（与编码器相同）"""
+        """Build cumulative frequency table (same as encoder)"""
         if abs(sum(probs) - 1.0) > 1e-5:
-            raise ValueError(f"概率总和必须为1.0，当前为{sum(probs)}")
+            raise ValueError(f"Probabilities must sum to 1.0, got {sum(probs)}")
         
-        # 归一化概率以处理浮点数误差
+        # Normalize probabilities to handle floating point errors
         total = sum(probs)
         if abs(total - 1.0) > 1e-10:
             probs = [p / total for p in probs]
@@ -278,28 +278,28 @@ class StandardArithmeticDecoder:
         return cumfreq
     
     def _read_bit(self, bitstream, bit_idx):
-        """读取一位，如果位流耗尽则返回0"""
+        """Read one bit, return 0 if bitstream exhausted"""
         if bit_idx < len(bitstream):
             return bitstream[bit_idx]
         return 0
     
     def decode(self, bitstream, probs):
         """
-        解码位流
+        Decode bitstream
         
-        参数:
-            bitstream: 位流（整数列表，0或1）
-            probs: 概率列表 [p0, p1, ..., pM-1]（必须与编码时相同）
+        Args:
+            bitstream: Bitstream (list of integers, 0 or 1)
+            probs: Probability list [p0, p1, ..., pM-1] (must be same as encoding)
         
-        返回:
-            decoded_symbols: 解码后的符号列表（不包含EOS）
+        Returns:
+            decoded_symbols: Decoded symbol list (excluding EOS)
         """
         M = len(probs)
         
-        # 构建累积频率（包含EOS符号）
+        # Build cumulative frequency (including EOS symbol)
         min_prob = min(probs) if probs else 0.01
         eos_prob = min(min_prob / 10, 0.001)
-        # 确保EOS符号至少有64的频率（约0.002的TOT）
+        # Ensure EOS symbol has at least 64 frequency (about 0.002 of TOT)
         min_eos_freq = 64
         min_eos_prob = min_eos_freq / self.TOT
         eos_prob = max(eos_prob, min_eos_prob)
@@ -309,7 +309,7 @@ class StandardArithmeticDecoder:
         
         cumfreq = self._build_cumfreq(adjusted_probs)
         
-        # 初始化code（value）：从位流开头读取前32位（如果位流不足32位，用0填充）
+        # Initialize code (value): Read first 32 bits from bitstream (pad with 0 if insufficient)
         code = 0
         bit_idx = 0
         for _ in range(32):
@@ -317,85 +317,85 @@ class StandardArithmeticDecoder:
             code = code * 2 + bit
             bit_idx += 1
         
-        # 初始化区间
+        # Initialize interval
         low = self.LOW
         high = self.HIGH
         
         decoded_symbols = []
         
-        # 解码符号直到遇到EOS
+        # Decode symbols until EOS
         while True:
-            # 计算区间大小
+            # Calculate interval size
             range_size = high - low + 1
             
-            # 计算当前code在累积频率中的位置
-            # 使用与编码器完全相同的区间计算方法
-            # 找到code落在哪个符号的区间内
-            symbol = len(cumfreq) - 2  # 默认为EOS
+            # Calculate position of current code in cumulative frequency
+            # Use same interval calculation method as encoder
+            # Find which symbol's interval code falls into
+            symbol = len(cumfreq) - 2  # Default to EOS
             
-            # 从后往前检查，优先检查EOS符号
+            # Check from back to front, prioritize EOS symbol
             for i in range(len(cumfreq) - 2, -1, -1):
-                # 计算符号i的区间边界（与编码器完全一致）
+                # Calculate symbol i's interval bounds (exactly same as encoder)
                 symbol_low_bound = low + (range_size * cumfreq[i]) // self.TOT
                 symbol_high_bound = low + (range_size * cumfreq[i + 1]) // self.TOT - 1
                 
-                # 确保区间有效
+                # Ensure valid interval
                 if symbol_low_bound > symbol_high_bound:
                     symbol_high_bound = symbol_low_bound
                 
-                # 检查code是否在这个区间内
+                # Check if code is in this interval
                 if symbol_low_bound <= code <= symbol_high_bound:
                     symbol = i
                     break
             
-            # 确保symbol在有效范围内
+            # Ensure symbol in valid range
             if symbol >= len(cumfreq) - 1:
-                symbol = len(cumfreq) - 2  # 强制为EOS
+                symbol = len(cumfreq) - 2  # Force to EOS
             
-            # 检查是否是EOS符号
+            # Check if EOS symbol
             if symbol == M:
                 break
             
             decoded_symbols.append(symbol)
             
-            # 更新区间
+            # Update interval
             symbol_low = cumfreq[symbol]
             symbol_high = cumfreq[symbol + 1]
             
             new_low = low + (range_size * symbol_low) // self.TOT
             new_high = low + (range_size * symbol_high) // self.TOT - 1
             
-            # 验证不变量：确保 low <= high
+            # Verify invariant: ensure low <= high
             if new_low > new_high:
                 new_high = new_low
             
             low = new_low
             high = new_high
             
-            # 验证不变量
+            # Verify invariants
             assert 0 <= low <= high <= self.HIGH, \
-                f"区间不变量违反: low={low}, high={high}"
+                f"Interval invariant violated: low={low}, high={high}"
             assert high - low + 1 > 0, \
-                f"区间大小无效: range={high - low + 1}"
+                f"Invalid interval size: range={high - low + 1}"
             
-            # 重新归一化（与编码过程对称）
+            # Renormalize (symmetric with encoding process)
             while True:
                 if high < self.HALF:
-                    # E1: MSB都是0
+                    # E1: MSB is all 0
                     low = low * 2
                     high = high * 2 + 1
                     bit = self._read_bit(bitstream, bit_idx)
                     code = code * 2 + bit
                     bit_idx += 1
                 elif low >= self.HALF:
-                    # E2: MSB都是1
+                    # E2: MSB is all 1
                     low = (low - self.HALF) * 2
                     high = (high - self.HALF) * 2 + 1
                     bit = self._read_bit(bitstream, bit_idx)
                     code = (code - self.HALF) * 2 + bit
                     bit_idx += 1
                 elif low >= self.QUARTER and high < self.THREE_QUARTER:
-                    # E3: 下溢
+                    # E3: Underflow
                     low = (low - self.QUARTER) * 2
                     high = (high - self.QUARTER) * 2 + 1
                     bit = self._read_bit(bitstream, bit_idx)
@@ -408,53 +408,53 @@ class StandardArithmeticDecoder:
 
 
 def test_arithmetic_codec():
-    """全面测试算术编码器和解码器"""
+    """Comprehensive test of arithmetic encoder and decoder"""
     print("="*70)
-    print("标准32位整数算术编码器/解码器测试")
+    print("Standard 32-bit Integer Arithmetic Encoder/Decoder Tests")
     print("="*70)
     
     encoder = StandardArithmeticEncoder()
     decoder = StandardArithmeticDecoder()
     
-    # 测试用例
+    # Test cases
     test_cases = [
         {
-            'name': '测试1: 简单序列 [0,1,2,3]',
+            'name': 'Test 1: Simple sequence [0,1,2,3]',
             'symbols': [0, 1, 2, 3],
             'probs': [0.25, 0.25, 0.25, 0.25]
         },
         {
-            'name': '测试2: 重复序列',
+            'name': 'Test 2: Repeated sequence',
             'symbols': [0, 0, 1, 1, 2, 2, 3, 3],
             'probs': [0.25, 0.25, 0.25, 0.25]
         },
         {
-            'name': '测试3: 长序列（40个符号）',
+            'name': 'Test 3: Long sequence (40 symbols)',
             'symbols': [0, 1, 2, 3] * 10,
             'probs': [0.25, 0.25, 0.25, 0.25]
         },
         {
-            'name': '测试4: 单符号',
+            'name': 'Test 4: Single symbol',
             'symbols': [2],
             'probs': [0.25, 0.25, 0.25, 0.25]
         },
         {
-            'name': '测试5: 不均匀概率',
+            'name': 'Test 5: Uneven probabilities',
             'symbols': [0, 1, 2, 3],
             'probs': [0.5, 0.25, 0.15, 0.1]
         },
         {
-            'name': '测试6: 极端不均匀概率',
+            'name': 'Test 6: Highly skewed probabilities',
             'symbols': [0, 0, 0, 0, 1, 1, 2, 3],
             'probs': [0.7, 0.2, 0.07, 0.03]
         },
         {
-            'name': '测试7: 随机序列（100个符号）',
-            'symbols': None,  # 将在测试中生成
+            'name': 'Test 7: Random sequence (100 symbols)',
+            'symbols': None,  # Will be generated in test
             'probs': [0.25, 0.25, 0.25, 0.25]
         },
         {
-            'name': '测试8: 之前失败的最后一个符号测试',
+            'name': 'Test 8: Previously failed last symbol test',
             'symbols': [0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3],
             'probs': [0.25, 0.25, 0.25, 0.25]
         }
@@ -471,7 +471,7 @@ def test_arithmetic_codec():
         print(f"\n{test_case['name']}")
         print("-" * 70)
         
-        # 生成随机序列（如果需要）
+        # Generate random sequence (if needed)
         if test_case['symbols'] is None:
             symbols = [random.randint(0, len(test_case['probs'])-1) 
                       for _ in range(100)]
@@ -480,102 +480,102 @@ def test_arithmetic_codec():
         
         probs = test_case['probs']
         
-        print(f"输入符号数量: {len(symbols)}")
-        print(f"输入符号 (前20个): {symbols[:20]}")
-        print(f"概率分布: {probs}")
+        print(f"Input symbol count: {len(symbols)}")
+        print(f"Input symbols (first 20): {symbols[:20]}")
+        print(f"Probability distribution: {probs}")
         
-        # 编码
+        # Encode
         bitstream = encoder.encode(symbols, probs)
-        print(f"位流长度: {len(bitstream)} 位")
-        print(f"位流 (前30位): {bitstream[:30]}")
+        print(f"Bitstream length: {len(bitstream)} bits")
+        print(f"Bitstream (first 30 bits): {bitstream[:30]}")
         
-        # 计算压缩统计
-        original_bits = len(symbols) * 2  # 每个符号2位（4个符号）
+        # Calculate compression statistics
+        original_bits = len(symbols) * 2  # 2 bits per symbol (4 symbols)
         compression_ratio = original_bits / len(bitstream) if len(bitstream) > 0 else 0
         bits_per_symbol = len(bitstream) / len(symbols) if len(symbols) > 0 else 0
-        print(f"原始位数: {original_bits} 位")
-        print(f"压缩比: {compression_ratio:.3f}")
-        print(f"每符号位数: {bits_per_symbol:.3f}")
+        print(f"Original bits: {original_bits} bits")
+        print(f"Compression ratio: {compression_ratio:.3f}")
+        print(f"Bits per symbol: {bits_per_symbol:.3f}")
         
         total_compression += compression_ratio
         test_count += 1
         
-        # 解码
+        # Decode
         decoded_symbols = decoder.decode(bitstream, probs)
-        print(f"解码符号数量: {len(decoded_symbols)}")
-        print(f"解码符号 (前20个): {decoded_symbols[:20]}")
+        print(f"Decoded symbol count: {len(decoded_symbols)}")
+        print(f"Decoded symbols (first 20): {decoded_symbols[:20]}")
         
-        # 验证
+        # Verify
         match = decoded_symbols == symbols
-        print(f"匹配: {'✓ 通过' if match else '✗ 失败'}")
+        print(f"Match: {'✓ Passed' if match else '✗ Failed'}")
         
         if not match:
-            print(f"不匹配详情:")
+            print(f"Mismatch details:")
             mismatches = [i for i in range(min(len(symbols), len(decoded_symbols))) 
                          if symbols[i] != decoded_symbols[i]]
             if len(mismatches) > 0:
-                print(f"  不匹配位置数量: {len(mismatches)}")
-                print(f"  前10个不匹配位置: {mismatches[:10]}")
+                print(f"  Mismatch count: {len(mismatches)}")
+                print(f"  First 10 mismatch positions: {mismatches[:10]}")
                 for idx in mismatches[:5]:
-                    print(f"    位置{idx}: 期望={symbols[idx]}, 解码={decoded_symbols[idx]}")
+                    print(f"    Position {idx}: expected={symbols[idx]}, decoded={decoded_symbols[idx]}")
             if len(decoded_symbols) != len(symbols):
-                print(f"  长度不匹配: 期望={len(symbols)}, 解码={len(decoded_symbols)}")
+                print(f"  Length mismatch: expected={len(symbols)}, decoded={len(decoded_symbols)}")
             all_passed = False
         
-        # 断言正确性
-        assert match, f"测试失败: {test_case['name']}"
+        # Assert correctness
+        assert match, f"Test failed: {test_case['name']}"
         assert len(decoded_symbols) == len(symbols), \
-            f"长度不匹配: 期望={len(symbols)}, 解码={len(decoded_symbols)}"
+            f"Length mismatch: expected={len(symbols)}, decoded={len(decoded_symbols)}"
     
     print("\n" + "="*70)
-    print("测试总结")
+    print("Test Summary")
     print("="*70)
-    print(f"总测试数: {test_count}")
-    print(f"平均压缩比: {total_compression / test_count:.3f}")
+    print(f"Total tests: {test_count}")
+    print(f"Average compression ratio: {total_compression / test_count:.3f}")
     
     if all_passed:
-        print("✓ 所有测试通过！")
+        print("✓ All tests passed!")
     else:
-        print("✗ 部分测试失败")
+        print("✗ Some tests failed")
     print("="*70)
     
     return all_passed
 
 
 def verify_invariants(low, high, cumfreq, TOT):
-    """验证不变量"""
+    """Verify invariants"""
     errors = []
     
-    # 验证区间
+    # Verify interval
     if not (0 <= low <= high <= 0xFFFFFFFF):
-        errors.append(f"区间无效: low={low}, high={high}")
+        errors.append(f"Invalid interval: low={low}, high={high}")
     
     range_size = high - low + 1
     if range_size <= 0:
-        errors.append(f"区间大小无效: range={range_size}")
+        errors.append(f"Invalid interval size: range={range_size}")
     
-    # 验证累积频率
+    # Verify cumulative frequency
     if len(cumfreq) < 2:
-        errors.append(f"累积频率长度无效: {len(cumfreq)}")
+        errors.append(f"Invalid cumfreq length: {len(cumfreq)}")
     
     if cumfreq[0] != 0:
-        errors.append(f"累积频率第一个元素必须为0: {cumfreq[0]}")
+        errors.append(f"First cumfreq element must be 0: {cumfreq[0]}")
     
     if cumfreq[-1] != TOT:
-        errors.append(f"累积频率最后一个元素必须为TOT: {cumfreq[-1]}, TOT={TOT}")
+        errors.append(f"Last cumfreq element must be TOT: {cumfreq[-1]}, TOT={TOT}")
     
-    # 验证严格递增
+    # Verify strictly increasing
     for i in range(len(cumfreq) - 1):
         if cumfreq[i] >= cumfreq[i + 1]:
-            errors.append(f"累积频率不是严格递增: cumfreq[{i}]={cumfreq[i]} >= cumfreq[{i+1}]={cumfreq[i+1]}")
+            errors.append(f"Cumfreq not strictly increasing: cumfreq[{i}]={cumfreq[i]} >= cumfreq[{i+1}]={cumfreq[i+1]}")
     
     return errors
 
 
 def test_m2_exhaustive():
-    """M=2符号的详尽测试"""
+    """Exhaustive test for M=2 symbols"""
     print("="*70)
-    print("M=2符号详尽测试")
+    print("M=2 Symbol Exhaustive Test")
     print("="*70)
     
     encoder = StandardArithmeticEncoder()
@@ -589,34 +589,34 @@ def test_m2_exhaustive():
     passed = 0
     failed_cases = []
     
-    print(f"运行 {num_trials} 次测试...")
+    print(f"Running {num_trials} tests...")
     
     for trial in range(num_trials):
-        # 随机序列长度 (0到500)
+        # Random sequence length (0 to 500)
         seq_len = random.randint(0, 500)
         
-        # 随机概率分割: p in {1..TOT-1}, [p, TOT-p]
+        # Random probability split: p in {1..TOT-1}, [p, TOT-p]
         p = random.randint(1, TOT - 1)
         prob0 = p / TOT
         prob1 = (TOT - p) / TOT
         probs = [prob0, prob1]
         
-        # 生成随机序列
+        # Generate random sequence
         symbols = [random.randint(0, 1) for _ in range(seq_len)]
         
         try:
-            # 编码
+            # Encode
             bitstream = encoder.encode(symbols, probs)
             
-            # 验证编码器的不变量（在编码过程中）
-            # 这里我们无法直接访问内部状态，所以跳过
+            # Verify encoder invariants (during encoding)
+            # Cannot directly access internal state here, so skip
             
-            # 解码
+            # Decode
             decoded_symbols = decoder.decode(bitstream, probs)
             
-            # 验证
+            # Verify
             if decoded_symbols != symbols:
-                # 找到第一个不匹配的位置
+                # Find first mismatch position
                 min_len = min(len(symbols), len(decoded_symbols))
                 first_mismatch = None
                 for i in range(min_len):
@@ -638,15 +638,15 @@ def test_m2_exhaustive():
                     'first_mismatch': first_mismatch
                 })
                 
-                # 只保存前10个失败案例
+                # Only save first 10 failed cases
                 if len(failed_cases) <= 10:
-                    print(f"\n❌ 测试 {trial} 失败:")
-                    print(f"  序列长度: {seq_len}")
-                    print(f"  概率: {probs} (p={p})")
-                    print(f"  输入符号 (前20个): {symbols[:20]}")
-                    print(f"  解码符号 (前20个): {decoded_symbols[:20]}")
-                    print(f"  位流长度: {len(bitstream)}")
-                    print(f"  第一个不匹配位置: {first_mismatch}")
+                    print(f"\n❌ Test {trial} failed:")
+                    print(f"  Sequence length: {seq_len}")
+                    print(f"  Probabilities: {probs} (p={p})")
+                    print(f"  Input symbols (first 20): {symbols[:20]}")
+                    print(f"  Decoded symbols (first 20): {decoded_symbols[:20]}")
+                    print(f"  Bitstream length: {len(bitstream)}")
+                    print(f"  First mismatch position: {first_mismatch}")
             else:
                 passed += 1
                 
@@ -660,32 +660,32 @@ def test_m2_exhaustive():
                 'error': str(e)
             })
             if len(failed_cases) <= 10:
-                print(f"\n❌ 测试 {trial} 异常: {e}")
+                print(f"\n❌ Test {trial} exception: {e}")
     
     print(f"\n" + "="*70)
-    print(f"测试结果:")
-    print(f"  总测试数: {num_trials}")
-    print(f"  通过: {passed}")
-    print(f"  失败: {len(failed_cases)}")
-    print(f"  成功率: {passed/num_trials*100:.2f}%")
+    print(f"Test Results:")
+    print(f"  Total tests: {num_trials}")
+    print(f"  Passed: {passed}")
+    print(f"  Failed: {len(failed_cases)}")
+    print(f"  Success rate: {passed/num_trials*100:.2f}%")
     
     if failed_cases:
-        print(f"\n失败案例详情 (前{min(5, len(failed_cases))}个):")
+        print(f"\nFailed case details (first {min(5, len(failed_cases))}):")
         for i, case in enumerate(failed_cases[:5]):
-            print(f"\n案例 {i+1}:")
-            print(f"  测试编号: {case['trial']}")
-            print(f"  序列长度: {case['seq_len']}")
-            print(f"  概率: {case['probs']} (p={case['p']})")
+            print(f"\nCase {i+1}:")
+            print(f"  Trial number: {case['trial']}")
+            print(f"  Sequence length: {case['seq_len']}")
+            print(f"  Probabilities: {case['probs']} (p={case['p']})")
             if 'error' in case:
-                print(f"  错误: {case['error']}")
+                print(f"  Error: {case['error']}")
             else:
-                print(f"  输入符号: {case['symbols']}")
-                print(f"  解码符号: {case['decoded']}")
-                print(f"  位流长度: {case['bitstream_len']}")
-                print(f"  第一个不匹配位置: {case['first_mismatch']}")
+                print(f"  Input symbols: {case['symbols']}")
+                print(f"  Decoded symbols: {case['decoded']}")
+                print(f"  Bitstream length: {case['bitstream_len']}")
+                print(f"  First mismatch position: {case['first_mismatch']}")
                 
-                # 打印最小可复现案例
-                print(f"\n  最小可复现案例:")
+                # Print minimal reproducible case
+                print(f"\n  Minimal reproducible case:")
                 print(f"    probs = {case['probs']}")
                 print(f"    symbols = {case['symbols']}")
                 print(f"    bitstream_len = {case['bitstream_len']}")
@@ -694,38 +694,38 @@ def test_m2_exhaustive():
     
     print("="*70)
     
-    assert len(failed_cases) == 0, f"M=2测试失败: {len(failed_cases)}个案例失败"
-    print("✓ M=2详尽测试全部通过！")
+    assert len(failed_cases) == 0, f"M=2 test failed: {len(failed_cases)} cases failed"
+    print("✓ M=2 exhaustive test all passed!")
     
     return len(failed_cases) == 0
 
 
 if __name__ == "__main__":
     try:
-        # 先运行标准测试
-        print("运行标准测试...")
+        # Run standard tests first
+        print("Running standard tests...")
         success = test_arithmetic_codec()
         if not success:
             exit(1)
         
-        # 运行M=2详尽测试
+        # Run M=2 exhaustive test
         print("\n" + "="*70)
-        print("运行M=2详尽测试...")
+        print("Running M=2 exhaustive test...")
         m2_success = test_m2_exhaustive()
         if not m2_success:
             exit(1)
         
         print("\n" + "="*70)
-        print("🎉 所有测试通过！")
+        print("🎉 All tests passed!")
         print("="*70)
         
     except AssertionError as e:
-        print(f"\n❌ 断言失败: {e}")
+        print(f"\n❌ Assertion failed: {e}")
         import traceback
         traceback.print_exc()
         exit(1)
     except Exception as e:
-        print(f"\n❌ 发生错误: {e}")
+        print(f"\n❌ Error occurred: {e}")
         import traceback
         traceback.print_exc()
         exit(1)
