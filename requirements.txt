@@ -1,0 +1,37 @@
+# ============================================================
+# SCONE - FSM-Guided Arithmetic Coding for DNA Storage
+# Training-Free Version - Minimal Dependencies
+# ============================================================
+
+# No external dependencies required!
+# 
+# The core FSM arithmetic coding pipeline uses only Python standard library:
+#   - math (log2 calculations)
+#   - random (sequence generation)
+#   - json, csv (result saving)
+#   - time (latency measurement)
+#   - statistics (mean, std calculations)
+#   - typing, dataclasses, collections (type hints and data structures)
+#
+# All core modules work out-of-the-box with Python 3.8+
+
+# ========== Optional Dependencies ==========
+# Uncomment if needed for visualization or extended analysis
+
+# matplotlib>=3.7.0    # For plotting histograms and charts
+# pandas>=2.0.0        # For data analysis
+# numpy>=1.24.0        # For numerical operations (not required)
+
+# ========== Quick Start ==========
+#
+# Run experiments (no installation needed):
+#   python scone_experiments.py --mode quick
+#   python scone_experiments.py --mode full
+#   python scone_experiments.py --mode ablation
+#
+# Core API:
+#   from scone_fsm_arith import encode_fsm, decode_fsm
+#   bitstream, dna = encode_fsm(symbols, base_probs)
+#   decoded, _ = decode_fsm(bitstream, base_probs)
+#
+# ============================================================
