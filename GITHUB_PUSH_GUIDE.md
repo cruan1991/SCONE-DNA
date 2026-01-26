@@ -7,10 +7,24 @@
 | **仓库地址** | https://github.com/cruan1991/SCONE-DNA |
 | **用户名** | cruan1991 |
 | **本地路径** | /Users/mac/Documents/SCONE-DNA |
+| **认证方式** | GitHub CLI (gh) ✅ 已配置 |
 
 ---
 
-## 日常更新流程
+## 日常更新流程（一键推送）
+
+```bash
+cd /Users/mac/Documents/SCONE-DNA
+git add .
+git commit -m "你的更新说明"
+git push
+```
+
+**不需要输入密码或 token！** GitHub CLI 已配置自动认证。
+
+---
+
+## 详细步骤
 
 ### 1. 进入项目目录
 ```bash
@@ -43,29 +57,6 @@ git push
 
 ---
 
-## 首次推送认证
-
-首次推送时会要求输入凭证：
-
-```
-Username: cruan1991
-Password: [你的 Personal Access Token]
-```
-
-⚠️ **注意**：Password 填的是 **Personal Access Token**，不是 GitHub 密码！
-
-### 获取 Personal Access Token
-
-1. 登录 GitHub
-2. 点击右上角头像 → **Settings**
-3. 左侧菜单最下方 → **Developer settings**
-4. **Personal access tokens** → **Tokens (classic)**
-5. **Generate new token**
-6. 勾选 `repo` 权限
-7. 生成并复制 token
-
----
-
 ## 常用命令速查
 
 | 命令 | 说明 |
@@ -77,12 +68,13 @@ Password: [你的 Personal Access Token]
 | `git pull` | 拉取远程更新 |
 | `git log --oneline` | 查看提交历史 |
 | `git diff` | 查看未暂存的修改 |
+| `gh auth status` | 查看 GitHub CLI 登录状态 |
 
 ---
 
 ## 一键推送脚本
 
-可以创建一个快捷脚本 `push.sh`：
+创建快捷脚本 `push.sh`：
 
 ```bash
 #!/bin/bash
@@ -95,6 +87,7 @@ echo "✅ 推送完成！"
 
 使用方法：
 ```bash
+chmod +x push.sh  # 首次需要添加执行权限
 ./push.sh "你的提交信息"
 ```
 
@@ -112,11 +105,31 @@ echo "✅ 推送完成！"
 
 ## 遇到问题？
 
+### 查看认证状态
+```bash
+gh auth status
+```
+
+### 重新登录 GitHub CLI
+```bash
+gh auth login
+# 选择 GitHub.com → HTTPS → Login with web browser
+```
+
+### 设置 Git 使用 GitHub CLI 认证
+```bash
+gh auth setup-git
+```
+
 ### 认证失败 (403)
 ```bash
-# 重新设置 remote URL（带 token）
+# 方法1：重新登录 gh
+gh auth login
+
+# 方法2：用 token 临时推送
 git remote set-url origin https://cruan1991:TOKEN@github.com/cruan1991/SCONE-DNA.git
 git push
+git remote set-url origin https://github.com/cruan1991/SCONE-DNA.git
 ```
 
 ### 冲突
@@ -144,6 +157,7 @@ SCONE-DNA/
 ├── scone_fsm_arith.py         # 主API
 ├── README.md                  # 项目文档
 ├── requirements.txt           # 依赖说明
+├── GITHUB_PUSH_GUIDE.md       # 本文档
 ├── scripts/                   # 实验脚本
 │   ├── scone_experiments.py
 │   ├── scone_ablation_experiment.py
@@ -157,3 +171,4 @@ SCONE-DNA/
 ---
 
 *最后更新：2026-01-25*
+*认证方式：GitHub CLI (gh auth)*
